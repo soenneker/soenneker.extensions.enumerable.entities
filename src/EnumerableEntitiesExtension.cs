@@ -1,6 +1,7 @@
-﻿using System.Collections.Generic;
+﻿using Soenneker.Entities.Entity.Abstract;
+using System;
+using System.Collections.Generic;
 using System.Diagnostics.Contracts;
-using Soenneker.Entities.Entity.Abstract;
 
 namespace Soenneker.Extensions.Enumerable.Entities;
 
@@ -26,106 +27,143 @@ public static class EnumerableEntitiesExtension
     /// </list>
     /// </remarks>
     [Pure]
-    public static List<string> ToIds<T>(this IEnumerable<T> value) where T : IEntity
+    public static List<string> ToIds<T>(this IEnumerable<T>? value) where T : IEntity
     {
-        switch (value)
+        if (value is null)
+            return [];
+
+        // Fast paths (no enumerator boxing, known counts)
+        if (value is List<T> list)
         {
-            case null:
-                return [];
+            var result = new List<string>(list.Count);
+            for (var i = 0; i < list.Count; i++)
+                result.Add(list[i].Id);
+            return result;
+        }
 
-            case ICollection<T> collection:
-                {
-                    var result = new List<string>(collection.Count);
-                    // Use indexer if available to avoid iterator allocation
-                    if (collection is IList<T> list)
-                    {
-                        for (var i = 0; i < list.Count; i++)
-                        {
-                            result.Add(list[i].Id);
-                        }
-                    }
-                    else
-                    {
-                        foreach (T doc in collection)
-                        {
-                            result.Add(doc.Id);
-                        }
-                    }
+        if (value is T[] array)
+        {
+            var result = new List<string>(array.Length);
+            for (var i = 0; i < array.Length; i++)
+                result.Add(array[i].Id);
+            return result;
+        }
 
-                    return result;
-                }
+        if (value is IReadOnlyList<T> roList)
+        {
+            var result = new List<string>(roList.Count);
+            for (var i = 0; i < roList.Count; i++)
+                result.Add(roList[i].Id);
+            return result;
+        }
 
-            default:
-                {
-                    // Avoid multiple enumerator allocations if possible
-                    var result = new List<string>();
-                    using IEnumerator<T> enumerator = value.GetEnumerator();
+        // Pre-size if we can get a count without enumeration
+        if (value is ICollection<T> collection)
+        {
+            var result = new List<string>(collection.Count);
 
-                    while (enumerator.MoveNext())
-                    {
-                        result.Add(enumerator.Current.Id);
-                    }
+            // Some ICollection<T> are also IList<T>; for-loop avoids foreach over interface
+            if (collection is IList<T> ilist)
+            {
+                for (var i = 0; i < ilist.Count; i++)
+                    result.Add(ilist[i].Id);
+            }
+            else
+            {
+                foreach (T item in collection)
+                    result.Add(item.Id);
+            }
 
-                    return result;
-                }
+            return result;
+        }
+
+        // Default: try to pre-size without enumerating; otherwise grow as needed
+        if (System.Linq.Enumerable.TryGetNonEnumeratedCount(value, out int count) && count > 0)
+        {
+            var result = new List<string>(count);
+            foreach (T item in value)
+                result.Add(item.Id);
+            return result;
+        }
+        else
+        {
+            var result = new List<string>();
+            foreach (T item in value)
+                result.Add(item.Id);
+            return result;
         }
     }
 
     /// <summary>
-    /// Determines whether the specified enumerable contains an entity with the given <paramref name="id"/>.
+    /// Determines whether the sequence contains an entity with the specified identifier.
     /// </summary>
-    /// <typeparam name="T">The entity type implementing <see cref="IEntity"/>.</typeparam>
-    /// <param name="entityEnumerable">The enumerable collection of entities to search.</param>
-    /// <param name="id">The ID to match against entity <c>Id</c> values.</param>
-    /// <returns>
-    /// <c>true</c> if any entity in the sequence has a matching ID; otherwise, <c>false</c>.
-    /// </returns>
-    /// <remarks>
-    /// This method is optimized to avoid allocations and minimize overhead:
-    /// <list type="bullet">
-    ///   <item><description>Handles <see cref="IList{T}"/> and <see cref="ICollection{T}"/> for efficient traversal.</description></item>
-    ///   <item><description>Avoids LINQ and lambda expressions to reduce memory usage and increase speed.</description></item>
-    ///   <item><description>Short-circuits on the first matching ID for optimal performance.</description></item>
-    /// </list>
-    /// </remarks>
+    /// <remarks>Returns false if either the sequence or the identifier is null or empty. The method performs
+    /// an ordinal, case-sensitive comparison of the Id property of each entity.</remarks>
+    /// <typeparam name="T">The type of entity in the sequence. Must implement the IEntity interface.</typeparam>
+    /// <param name="entityEnumerable">The sequence of entities to search. Can be null.</param>
+    /// <param name="id">The identifier to locate within the sequence. The comparison is case-sensitive and uses ordinal comparison. Can
+    /// be null.</param>
+    /// <returns>true if an entity with the specified identifier exists in the sequence; otherwise, false.</returns>
     [Pure]
-    public static bool ContainsId<T>(this IEnumerable<T> entityEnumerable, string id) where T : IEntity
+    public static bool ContainsId<T>(this IEnumerable<T>? entityEnumerable, string? id) where T : IEntity
     {
-        if (entityEnumerable.IsNullOrEmpty())
+        if (entityEnumerable is null || string.IsNullOrEmpty(id))
             return false;
 
-        switch (entityEnumerable)
+        // Cheap emptiness check without enumerating when possible
+        if (entityEnumerable is ICollection<T> c && c.Count == 0)
+            return false;
+
+        if (entityEnumerable is List<T> list)
         {
-            case IList<T> list:
-                for (var i = 0; i < list.Count; i++)
-                {
-                    if (list[i].Id == id)
-                        return true;
-                }
+            for (var i = 0; i < list.Count; i++)
+            {
+                if (string.Equals(list[i].Id, id, StringComparison.Ordinal))
+                    return true;
+            }
 
-                break;
+            return false;
+        }
 
-            case ICollection<T> collection:
-                foreach (T item in collection)
-                {
-                    if (item.Id == id)
-                        return true;
-                }
+        // Fast paths
+        if (entityEnumerable is T[] array)
+        {
+            for (var i = 0; i < array.Length; i++)
+            {
+                if (string.Equals(array[i].Id, id, StringComparison.Ordinal))
+                    return true;
+            }
 
-                break;
+            return false;
+        }
 
-            default:
-                {
-                    using IEnumerator<T> enumerator = entityEnumerable.GetEnumerator();
+        if (entityEnumerable is IReadOnlyList<T> roList)
+        {
+            for (var i = 0; i < roList.Count; i++)
+            {
+                if (string.Equals(roList[i].Id, id, StringComparison.Ordinal))
+                    return true;
+            }
 
-                    while (enumerator.MoveNext())
-                    {
-                        if (enumerator.Current.Id == id)
-                            return true;
-                    }
+            return false;
+        }
 
-                    break;
-                }
+        if (entityEnumerable is IList<T> ilist)
+        {
+            for (var i = 0; i < ilist.Count; i++)
+            {
+                if (string.Equals(ilist[i].Id, id, StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
+        }
+
+        // Default
+        foreach (T item in entityEnumerable)
+        {
+            if (string.Equals(item.Id, id, StringComparison.Ordinal))
+                return true;
         }
 
         return false;
