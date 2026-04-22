@@ -44,7 +44,12 @@
     </ItemGroup>
 
     <ItemGroup>
+<<<<<<< HEAD
         <PackageReference Include="Soenneker.Entities.Entity" Version="4.0.690" />
         <PackageReference Include="Soenneker.Extensions.Enumerable" Version="4.0.622" />
+=======
+      <PackageReference Include="Soenneker.Entities.Entity" Version="4.0.690" />
+      <PackageReference Include="Soenneker.Extensions.Enumerable" Version="4.0.623" />
+>>>>>>> b2e4d41c06fe35e27fa055849f8a45795724b19c
     </ItemGroup>
 </Project>
