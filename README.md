@@ -4,10 +4,24 @@
 [![](https://img.shields.io/github/actions/workflow/status/soenneker/soenneker.extensions.enumerable.entities/codeql.yml?label=CodeQL&style=for-the-badge)](https://github.com/soenneker/soenneker.extensions.enumerable.entities/actions/workflows/codeql.yml)
 
 # ![](https://user-images.githubusercontent.com/4441470/224455560-91ed3ee7-f510-4041-a8d2-3fc093025112.png) Soenneker.Extensions.Enumerable.Entities
-### A collection of helpful IEnumerable Entities extension methods
+A collection of helpful IEnumerable Entities extension methods.
 
 ## Installation
 
-```
+```bash
 dotnet add package Soenneker.Extensions.Enumerable.Entities
 ```
+
+## Quick start
+
+```csharp
+using Soenneker.Extensions.Enumerable.Entities;
+
+// Given an existing IEnumerable<T>? named value:
+var result = value.ToIds();
+```
+
+## Common operations
+
+- `ToIds()` - Projects a sequence of entities into a list of their `Id` values. This method is optimized for performance: Uses `ICollectionT.Count` to preallocate list capacity when available.
+- `ContainsId()` - Determines whether the sequence contains an entity with the specified identifier.
